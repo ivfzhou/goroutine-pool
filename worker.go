@@ -27,7 +27,7 @@ func (w *worker) start() {
 	go func() {
 		defer func() {
 			defer func() {
-				atomic.AddUint32(&w.workingNum, -1)
+				atomic.AddUint32(&w.workingNum, ^uint32(1)+1)
 				w.Pool.workerPoll.Put(w)
 				w.reset()
 			}()
@@ -45,11 +45,14 @@ func (w *worker) start() {
 				_, _ = w.Pool.workerCache.Put(w)
 				w.done.Reset(w.idleTimeout)
 			case <-w.done.C:
-				if v, ok := <-w.tasks; ok {
-					v.fn(v.ctx)
-				}
-				return
+				goto L1
+			case <-w.closed:
+				goto L1
 			}
+		}
+	L1:
+		if v, ok := <-w.tasks; ok {
+			v.fn(v.ctx)
 		}
 	}()
 }
@@ -58,5 +61,4 @@ func (w *worker) reset() {
 	w.Pool = nil
 	w.tasks = nil
 	w.done = nil
-	w.closed = 0
 }
