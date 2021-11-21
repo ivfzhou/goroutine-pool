@@ -6,69 +6,99 @@ import (
 	"time"
 )
 
+var closedChan = make(chan struct{})
+
+func init() {
+	close(closedChan)
+}
+
 type task struct {
 	ctx context.Context
 	fn  func(context.Context)
 }
 
 type worker struct {
-	*Pool
-	tasks      chan *task
-	done       *time.Timer
-	nextWorker *worker
+	tasks  chan *task
+	timer  *time.Timer
+	closed chan struct{}
 }
 
 func (w *worker) work(ctx context.Context, fn func(ctx context.Context)) {
+	if w.isClosed() {
+		return
+	}
 	w.tasks <- &task{ctx, fn}
 }
 
-func (w *worker) start() {
+func (w *worker) start(pool *Pool) {
 	w.tasks = make(chan *task, taskCache)
-	w.done = time.NewTimer(w.idleTimeout)
+	w.timer = time.NewTimer(pool.idleTimeout)
 	go func() {
 		defer func() {
 			defer func() {
-				_ = atomic.AddUint32(&w.workingNum, ^uint32(1)+1)
-				_ = w.done.Stop()
+				_ = atomic.AddUint32(&pool.workingNum, negativeOne)
+				_ = w.timer.Stop()
+				w.timer = nil
+				w.tasks = nil
 			}()
-			if w.panicHandler != nil {
+			if pool.panicHandler != nil {
 				if p := recover(); p != nil {
-					w.panicHandler(p)
+					pool.panicHandler(p)
 				}
 			}
 		}()
 
-	L1:
 		for {
 			select {
 			case v := <-w.tasks:
 				v.fn(v.ctx)
-				_ = w.done.Stop()
-				_ = w.done.Reset(w.idleTimeout)
-				w.workerCache.PushTail(w)
-			case <-w.done.C:
-				goto L2
-			case <-w.closed:
-				goto L2
+				w.resetTimer(pool.idleTimeout)
+				pool.cond.L.Lock()
+				pool.pushTail(w)
+				pool.cond.L.Unlock()
+				pool.cond.Signal()
+			case <-w.timer.C:
+				w.closed = closedChan
+				select {
+				case v := <-w.tasks:
+					v.fn(v.ctx)
+					w.resetTimer(pool.idleTimeout)
+				default:
+				}
+				return
+			case <-pool.closed:
+				select {
+				case v := <-w.tasks:
+					v.fn(v.ctx)
+				default:
+				}
+				return
 			}
-		}
-	L2:
-		select {
-		case v := <-w.tasks:
-			v.fn(v.ctx)
-			_ = w.done.Stop()
-			_ = w.done.Reset(w.idleTimeout)
-			goto L1
-		default:
 		}
 	}()
 }
 
 func (w *worker) isClosed() bool {
 	select {
-	case <-w.done.C:
+	case <-w.closed:
 		return true
 	default:
 		return false
 	}
+}
+
+func (w *worker) runTask(idleTimeout time.Duration) bool {
+	select {
+	case v := <-w.tasks:
+		v.fn(v.ctx)
+		w.resetTimer(idleTimeout)
+		return true
+	default:
+		return false
+	}
+}
+
+func (w *worker) resetTimer(t time.Duration) {
+	_ = w.timer.Stop()
+	_ = w.timer.Reset(t)
 }

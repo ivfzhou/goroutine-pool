@@ -1,20 +1,15 @@
 package goroutine_pool
 
-import "sync"
-
 type node struct {
-	value          interface{}
+	value          *worker
 	previous, next *node
 }
 
-type Link struct {
-	lock       sync.Mutex
+type link struct {
 	head, tail *node
 }
 
-func (l *Link) GetHead(fn func(v interface{}) bool) interface{} {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l *link) getHead(fn func(w *worker) bool) *worker {
 	for {
 		if l.head == nil {
 			return nil
@@ -28,9 +23,7 @@ func (l *Link) GetHead(fn func(v interface{}) bool) interface{} {
 	}
 }
 
-func (l *Link) CheckHead(fn func(v interface{}) bool) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l *link) deleteHead(fn func(w *worker) bool) {
 	for {
 		if l.head == nil {
 			return
@@ -44,15 +37,13 @@ func (l *Link) CheckHead(fn func(v interface{}) bool) {
 	}
 }
 
-func (l *Link) PushTail(v interface{}) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
+func (l *link) pushTail(w *worker) {
 	if l.head == nil {
-		l.head = &node{v, nil, nil}
+		l.head = &node{w, nil, nil}
 	} else if l.tail == nil {
-		l.tail = &node{v, l.head, nil}
+		l.tail = &node{w, l.head, nil}
 	} else {
-		l.tail.next = &node{v, l.tail, nil}
+		l.tail.next = &node{w, l.tail, nil}
 		l.tail = l.tail.next
 	}
 }

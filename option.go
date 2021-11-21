@@ -11,12 +11,12 @@ type option struct {
 
 type optionFunc func(*option)
 
-func loadOption(opts ...optionFunc) *option {
+func loadOption(opts ...optionFunc) option {
 	o := &option{}
 	for _, fn := range opts {
 		fn(o)
 	}
-	return o
+	return *o
 }
 
 // WithPanicHandler 设置协程池协程执行任务触发恐慌时的代理函数。如果未设置，执行任务时恐慌将往外抛出。
