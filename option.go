@@ -12,7 +12,7 @@ type option struct {
 type optionFunc func(*option)
 
 func loadOption(opts ...optionFunc) *option {
-	o := new(option)
+	o := &option{}
 	for _, fn := range opts {
 		fn(o)
 	}

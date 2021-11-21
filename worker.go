@@ -13,8 +13,9 @@ type task struct {
 
 type worker struct {
 	*Pool
-	tasks chan *task
-	done  *time.Ticker
+	tasks      chan *task
+	done       *time.Timer
+	nextWorker *worker
 }
 
 func (w *worker) work(ctx context.Context, fn func(ctx context.Context)) {
@@ -23,13 +24,12 @@ func (w *worker) work(ctx context.Context, fn func(ctx context.Context)) {
 
 func (w *worker) start() {
 	w.tasks = make(chan *task, taskCache)
-	w.done = time.NewTicker(w.idleTimeout)
+	w.done = time.NewTimer(w.idleTimeout)
 	go func() {
 		defer func() {
 			defer func() {
-				atomic.AddUint32(&w.workingNum, ^uint32(1)+1)
-				w.Pool.workerPoll.Put(w)
-				w.reset()
+				_ = atomic.AddUint32(&w.workingNum, ^uint32(1)+1)
+				_ = w.done.Stop()
 			}()
 			if w.panicHandler != nil {
 				if p := recover(); p != nil {
@@ -38,27 +38,37 @@ func (w *worker) start() {
 			}
 		}()
 
+	L1:
 		for {
 			select {
 			case v := <-w.tasks:
 				v.fn(v.ctx)
-				_, _ = w.Pool.workerCache.Put(w)
-				w.done.Reset(w.idleTimeout)
+				_ = w.done.Stop()
+				_ = w.done.Reset(w.idleTimeout)
+				w.workerCache.PushTail(w)
 			case <-w.done.C:
-				goto L1
+				goto L2
 			case <-w.closed:
-				goto L1
+				goto L2
 			}
 		}
-	L1:
-		if v, ok := <-w.tasks; ok {
+	L2:
+		select {
+		case v := <-w.tasks:
 			v.fn(v.ctx)
+			_ = w.done.Stop()
+			_ = w.done.Reset(w.idleTimeout)
+			goto L1
+		default:
 		}
 	}()
 }
 
-func (w *worker) reset() {
-	w.Pool = nil
-	w.tasks = nil
-	w.done = nil
+func (w *worker) isClosed() bool {
+	select {
+	case <-w.done.C:
+		return true
+	default:
+		return false
+	}
 }

@@ -2,4 +2,4 @@ module gitee.com/ivfzhou/goroutine-pool
 
 go 1.17
 
-require gitee.com/ivfzhou/safe-queue v0.3.0
+require github.com/panjf2000/ants/v2 v2.4.6
