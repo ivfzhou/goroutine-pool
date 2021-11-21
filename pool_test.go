@@ -35,7 +35,6 @@ func TestCommon(t *testing.T) {
 			t.Error("ctx != c")
 		}
 		<-ch
-		t.Log("done")
 	}
 	err := pool.Submit(ctx, fn)
 	if err != nil {
@@ -53,13 +52,9 @@ func TestCommon(t *testing.T) {
 	time.Sleep(time.Second)
 
 	pool = goroutine_pool.New(goroutine_pool.WithMaxWaitTaskSize(1), goroutine_pool.WithCapacity(1))
-	ctx, cancel := context.WithTimeout(ctx, time.Second*10)
-	defer cancel()
+	ch = make(chan struct{})
 	err = pool.Submit(ctx, func(ctx context.Context) {
-		select {
-		case <-ctx.Done():
-		}
-		t.Log("done")
+		<-ch
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -77,6 +72,7 @@ func TestCommon(t *testing.T) {
 	if pool.CurrentBlockingSize() != 1 {
 		t.Error("block != 1")
 	}
+	close(ch)
 }
 
 func TestPool(t *testing.T) {
@@ -99,9 +95,9 @@ func TestPool(t *testing.T) {
 	}
 }
 
-const times = 1000000
+const times = 10000000
 
-//3055811480
+//7532518536
 func BenchmarkPool(b *testing.B) {
 	pool := goroutine_pool.New()
 	wg := sync.WaitGroup{}
@@ -122,7 +118,7 @@ func BenchmarkPool(b *testing.B) {
 	b.StopTimer()
 }
 
-//507128664
+//5175545706
 func BenchmarkNormal(b *testing.B) {
 	wg := sync.WaitGroup{}
 	count := uint64(0)
@@ -142,7 +138,7 @@ func BenchmarkNormal(b *testing.B) {
 	b.StopTimer()
 }
 
-//669609472
+//6382175158
 func BenchmarkAnts(b *testing.B) {
 	pool, _ := ants.NewPool(math.MaxUint32)
 	wg := sync.WaitGroup{}

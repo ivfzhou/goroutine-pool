@@ -6,41 +6,25 @@ import (
 	"time"
 )
 
-var closedChan = make(chan struct{})
-
-func init() {
-	close(closedChan)
-}
-
 type task struct {
 	ctx context.Context
 	fn  func(context.Context)
 }
 
 type worker struct {
-	tasks  chan *task
-	timer  *time.Timer
-	closed chan struct{}
+	tasks            chan *task
+	latestAccessTime time.Time
 }
 
-func (w *worker) work(ctx context.Context, fn func(ctx context.Context)) {
-	if w.isClosed() {
-		return
-	}
+func (w *worker) work(ctx context.Context, fn func(context.Context)) {
 	w.tasks <- &task{ctx, fn}
 }
 
 func (w *worker) start(pool *Pool) {
 	w.tasks = make(chan *task, taskCache)
-	w.timer = time.NewTimer(pool.idleTimeout)
 	go func() {
 		defer func() {
-			defer func() {
-				_ = atomic.AddUint32(&pool.workingNum, negativeOne)
-				_ = w.timer.Stop()
-				w.timer = nil
-				w.tasks = nil
-			}()
+			_ = atomic.AddUint32(&pool.workingNum, negativeOne)
 			if pool.panicHandler != nil {
 				if p := recover(); p != nil {
 					pool.panicHandler(p)
@@ -48,57 +32,21 @@ func (w *worker) start(pool *Pool) {
 			}
 		}()
 
-		for {
-			select {
-			case v := <-w.tasks:
-				v.fn(v.ctx)
-				w.resetTimer(pool.idleTimeout)
-				pool.cond.L.Lock()
-				pool.pushTail(w)
-				pool.cond.L.Unlock()
-				pool.cond.Signal()
-			case <-w.timer.C:
-				w.closed = closedChan
-				select {
-				case v := <-w.tasks:
-					v.fn(v.ctx)
-					w.resetTimer(pool.idleTimeout)
-				default:
-				}
-				return
-			case <-pool.closed:
-				select {
-				case v := <-w.tasks:
-					v.fn(v.ctx)
-				default:
-				}
-				return
-			}
+		for v := range w.tasks {
+			v.fn(v.ctx)
+			w.latestAccessTime = time.Now()
+			pool.cache <- w
 		}
 	}()
 }
 
-func (w *worker) isClosed() bool {
-	select {
-	case <-w.closed:
-		return true
-	default:
-		return false
-	}
+func (w *worker) close() {
+	close(w.tasks)
 }
 
-func (w *worker) runTask(idleTimeout time.Duration) bool {
-	select {
-	case v := <-w.tasks:
-		v.fn(v.ctx)
-		w.resetTimer(idleTimeout)
+func (w *worker) isTimeout(idleTimeout time.Duration) bool {
+	if time.Now().After(w.latestAccessTime.Add(idleTimeout)) {
 		return true
-	default:
-		return false
 	}
-}
-
-func (w *worker) resetTimer(t time.Duration) {
-	_ = w.timer.Stop()
-	_ = w.timer.Reset(t)
+	return false
 }

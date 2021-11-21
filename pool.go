@@ -11,10 +11,7 @@ import (
 	"time"
 )
 
-const (
-	defaultIdleTimeout    = 2 * time.Second
-	defaultFreeWorkerTime = 5 * time.Second
-)
+const defaultIdleTimeout = 2 * time.Second
 
 var (
 	// ErrPoolIsOverload 代表池已满。
@@ -36,8 +33,8 @@ var (
 // Pool 协程池结构体。
 type Pool struct {
 	option
-	link
-	cond                    sync.Cond
+	cache                   chan *worker
+	lock                    sync.Mutex
 	closed                  chan struct{}
 	pool                    sync.Pool
 	workingNum, blockingNum uint32
@@ -49,13 +46,8 @@ type Pool struct {
 func New(opts ...optionFunc) *Pool {
 	p := &Pool{
 		option: loadOption(opts...),
-		link:   link{},
 		closed: make(chan struct{}),
 		pool:   sync.Pool{},
-	}
-	p.cond = *sync.NewCond(&sync.Mutex{})
-	p.pool.New = func() interface{} {
-		return &worker{}
 	}
 	if p.capacity == 0 {
 		p.capacity = math.MaxUint32
@@ -64,7 +56,11 @@ func New(opts ...optionFunc) *Pool {
 		p.idleTimeout = defaultIdleTimeout
 	}
 
-	p.periodicalCleanTimeout()
+	p.lock = sync.Mutex{}
+	p.pool.New = func() interface{} {
+		return &worker{}
+	}
+	p.cache = make(chan *worker, p.capacity/3)
 	return p
 }
 
@@ -76,12 +72,12 @@ func New(opts ...optionFunc) *Pool {
 //
 // error 异常返回。
 func (p *Pool) Submit(ctx context.Context, fn func(context.Context)) error {
-	if p.IsClosed() {
-		return ErrPoolIsClosed
-	}
-
-	p.cond.L.Lock()
-	defer p.cond.L.Unlock()
+	isBlock := false
+	defer func() {
+		if isBlock {
+			_ = atomic.AddUint32(&p.blockingNum, negativeOne)
+		}
+	}()
 	for {
 		if p.IsClosed() {
 			return ErrPoolIsClosed
@@ -101,9 +97,10 @@ func (p *Pool) Submit(ctx context.Context, fn func(context.Context)) error {
 
 		if !p.addBlockingNum() {
 			return ErrPoolIsOverload
+		} else {
+			isBlock = true
+			runtime.Gosched()
 		}
-		p.cond.Wait()
-		_ = atomic.AddUint32(&p.blockingNum, negativeOne)
 	}
 }
 
@@ -147,23 +144,29 @@ func (p *Pool) CurrentWorkingNum() uint32 {
 	return atomic.LoadUint32(&p.workingNum)
 }
 
-func (p *Pool) getWorkerCache() *worker {
-	return p.getHead(func(w *worker) bool {
-		if w == nil || w.isClosed() {
-			return false
+func (p *Pool) getWorkerCache() (w *worker) {
+	for len(p.cache) != 0 {
+		w = <-p.cache
+		if w.isTimeout(p.idleTimeout) {
+			w.close()
+		} else {
+			return
 		}
-		return true
-	})
+	}
+	return nil
 }
 
 func (p *Pool) createWorker() *worker {
+	p.lock.Lock()
 	workingNum := atomic.LoadUint32(&p.workingNum)
 	if workingNum < p.capacity {
 		_ = atomic.AddUint32(&p.workingNum, 1)
+		p.lock.Unlock()
 		w := p.pool.Get().(*worker)
 		w.start(p)
 		return w
 	}
+	p.lock.Unlock()
 	return nil
 }
 
@@ -171,30 +174,12 @@ func (p *Pool) addBlockingNum() bool {
 	if p.maxWaitTaskSize == 0 {
 		return false
 	}
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	blockingNum := atomic.LoadUint32(&p.blockingNum)
-	if blockingNum >= p.maxWaitTaskSize {
-		return false
+	if blockingNum < p.maxWaitTaskSize {
+		_ = atomic.AddUint32(&p.blockingNum, 1)
+		return true
 	}
-	_ = atomic.AddUint32(&p.blockingNum, 1)
-	return true
-}
-
-func (p *Pool) periodicalCleanTimeout() {
-	tick := time.NewTicker(defaultFreeWorkerTime)
-	go func() {
-		for range tick.C {
-			if p.IsClosed() {
-				return
-			}
-			p.cond.L.Lock()
-			p.deleteHead(func(w *worker) bool {
-				if w == nil || w.isClosed() {
-					return false
-				}
-				return true
-			})
-			p.cond.L.Unlock()
-			p.cond.Broadcast()
-		}
-	}()
+	return false
 }
