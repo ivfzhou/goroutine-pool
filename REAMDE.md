@@ -1,11 +1,15 @@
-### 模块说明
+### 说明
 
 go协程管理池
 
-### 快速开始
+### 开始
+
+```shell
+go get gitee.com/ivfzhou/goroutine-pool@latest
+```
 
 ```golang
-import pool "github.com/ivfzhou/goroutine-pool"
+import pool "gitee.com/ivfzhou/goroutine-pool"
 
 // 创建协程池
 p := pool.New(pool.WithInitSize(1024), pool.WithMinIdleSize(1024), pool.WithMaxWaitingSize(1024))
