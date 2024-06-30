@@ -30,9 +30,9 @@ type option struct {
 	maxWaitingSize int
 }
 
-type optionFunc func(*option)
+type OptionFunc func(*option)
 
-func loadOption(opts ...optionFunc) *option {
+func loadOption(opts ...OptionFunc) *option {
 	o := &option{}
 	for _, fn := range opts {
 		fn(o)
@@ -55,7 +55,7 @@ func loadOption(opts ...optionFunc) *option {
 }
 
 // WithMaxSize 协程池最大数量。
-func WithMaxSize(maxSize int) optionFunc {
+func WithMaxSize(maxSize int) OptionFunc {
 	return func(o *option) {
 		if maxSize > 0 {
 			o.maxSize = maxSize
@@ -64,7 +64,7 @@ func WithMaxSize(maxSize int) optionFunc {
 }
 
 // WithMinIdleSize 协程池最少数量。
-func WithMinIdleSize(minIdleSize int) optionFunc {
+func WithMinIdleSize(minIdleSize int) OptionFunc {
 	return func(o *option) {
 		if minIdleSize > 0 {
 			o.minIdleSize = minIdleSize
@@ -73,7 +73,7 @@ func WithMinIdleSize(minIdleSize int) optionFunc {
 }
 
 // WithInitSize 协程池初始数量。
-func WithInitSize(initSize int) optionFunc {
+func WithInitSize(initSize int) OptionFunc {
 	return func(o *option) {
 		if initSize > 0 {
 			o.initSize = initSize
@@ -82,7 +82,7 @@ func WithInitSize(initSize int) optionFunc {
 }
 
 // WithMaxIdleTimeout 协程最大空间回收时间。
-func WithMaxIdleTimeout(maxIdleTimeout time.Duration) optionFunc {
+func WithMaxIdleTimeout(maxIdleTimeout time.Duration) OptionFunc {
 	return func(o *option) {
 		if maxIdleTimeout > 0 {
 			o.maxIdleTimeout = maxIdleTimeout
@@ -91,7 +91,7 @@ func WithMaxIdleTimeout(maxIdleTimeout time.Duration) optionFunc {
 }
 
 // WithMaxWaitingSize 任务最大等待个数。
-func WithMaxWaitingSize(maxWaitingSize int) optionFunc {
+func WithMaxWaitingSize(maxWaitingSize int) OptionFunc {
 	return func(o *option) {
 		if maxWaitingSize > 0 {
 			o.maxWaitingSize = maxWaitingSize

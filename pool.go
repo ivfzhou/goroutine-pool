@@ -31,7 +31,7 @@ type Pool struct {
 }
 
 // New 新建协程池。opts 协程池参数。
-func New(opts ...optionFunc) *Pool {
+func New(opts ...OptionFunc) *Pool {
 	p := &Pool{
 		option:   loadOption(opts...),
 		isClosed: make(chan struct{}),
