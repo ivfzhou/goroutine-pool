@@ -1,4 +1,4 @@
-gitee.com/ivfzhou/safe-queue v1.0.2 h1:hHKHNghNBBBKxHOy8Hz8dzv0Obnoi8wfodLD6LpJJeM=
-gitee.com/ivfzhou/safe-queue v1.0.2/go.mod h1:/TkoXfMeJ7HmXKmd2T0m5J3R7/WE31ng35Oc+7LU00w=
-golang.org/x/sys v0.13.0 h1:Af8nKPmuFypiUBjVoU9V20FiaFXOcuZI21p0ycVYYGE=
-golang.org/x/sys v0.13.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+gitee.com/ivfzhou/safe-queue v1.0.3 h1:TDTiQrtcSbhbFgvRUjQzWvJ+80SgMy9Gwe6tCI6yH2g=
+gitee.com/ivfzhou/safe-queue v1.0.3/go.mod h1:wwmnlWveXC3ivtFutzaZ4kQ4FsOc6f6tRuzgRcyzm8M=
+golang.org/x/sys v0.41.0 h1:Ivj+2Cp/ylzLiEU89QhWblYnOE9zerudt9Ftecq2C6k=
+golang.org/x/sys v0.41.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
