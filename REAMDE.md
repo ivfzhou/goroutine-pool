@@ -1,8 +1,8 @@
-# 1. 说明
+# 一、说明
 
 go 协程管理池
 
-# 2. 使用
+# 二、使用
 
 ```shell
 go get gitee.com/ivfzhou/goroutine-pool@latest
@@ -26,7 +26,3 @@ p.WaitingTaskSize()
 // 关闭协程池
 pool.Close()
 ```
-
-# 3. 联系作者
-
-电邮：ivfzhou@126.com
