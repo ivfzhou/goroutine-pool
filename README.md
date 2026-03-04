@@ -2,6 +2,9 @@
 
 go 协程管理池
 
+[![codecov](https://codecov.io/gh/ivfzhou/goroutine-pool/graph/badge.svg?token=N949TSNU2T)](https://codecov.io/gh/ivfzhou/goroutine-pool)
+[![Go Reference](https://pkg.go.dev/badge/gitee.com/ivfzhou/goroutine-pool.svg)](https://pkg.go.dev/gitee.com/ivfzhou/goroutine-pool)
+
 # 二、使用
 
 ```shell

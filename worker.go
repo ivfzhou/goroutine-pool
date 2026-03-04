@@ -13,12 +13,13 @@
 package goroutine_pool
 
 import (
+	"log"
 	"runtime"
 	"sync/atomic"
 	"time"
 )
 
-var taskCache = func() int {
+var channelLength = func() int {
 	if runtime.GOMAXPROCS(0) == 1 {
 		return 0
 	}
@@ -28,23 +29,29 @@ var taskCache = func() int {
 type worker struct {
 	startIdleTime time.Time
 	running       uint32
-	c             chan func()
+	channel       chan func()
 }
 
 func newWorker() *worker {
-	return &worker{startIdleTime: time.Now().Add(defaultIdleTimeout), c: make(chan func(), taskCache)}
+	return &worker{startIdleTime: time.Now().Add(defaultIdleTimeout), channel: make(chan func(), channelLength)}
+}
+
+func wrapperPanic(f func()) func() {
+	return func() {
+		defer func() {
+			if p := recover(); p != nil {
+				log.Printf("panic: %v", p)
+			}
+		}()
+		f()
+	}
 }
 
 func (w *worker) start() {
 	go func() {
-		defer func() {
-			if recover() != nil {
-				w.start()
-			}
-		}()
-		for fn := range w.c {
+		for fn := range w.channel {
 			atomic.StoreUint32(&w.running, 1)
-			fn()
+			wrapperPanic(fn)()
 			w.startIdleTime = time.Now()
 			atomic.StoreUint32(&w.running, 0)
 		}
@@ -56,4 +63,8 @@ func (w *worker) isIdle(idleTimeout time.Duration) bool {
 		return true
 	}
 	return false
+}
+
+func (w *worker) close() {
+	close(w.channel)
 }

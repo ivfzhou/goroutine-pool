@@ -13,8 +13,7 @@
 package goroutine_pool_test
 
 import (
-	"fmt"
-	"sync"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -22,77 +21,94 @@ import (
 	pool "gitee.com/ivfzhou/goroutine-pool"
 )
 
-func TestCommon(t *testing.T) {
-	p := pool.New(pool.WithMaxSize(2))
-	if p.Cap() != 2 {
-		t.Fatal("cap != 2")
+func TestPool(t *testing.T) {
+	{
+		size := 5
+		minimumSize := 1
+		p := pool.New(pool.WithInitSize(minimumSize), pool.WithMaxSize(size), pool.WithMaxIdleTimeout(time.Minute),
+			pool.WithMinIdleSize(size))
+		if p.Cap() != size {
+			t.Fatal("pool cap is not", size)
+		}
+		waitChannel := make(chan struct{})
+		fn := func() {
+			<-waitChannel
+		}
+		for range size {
+			_ = p.Submit(fn)
+		}
+		if p.WorkerSize() != size {
+			t.Fatal("waiting task size is not", size)
+		}
+		close(waitChannel)
+		p.Close()
 	}
-	if p.WorkerSize() != 0 {
-		t.Fatal("worker != 0")
-	}
-	if p.WaitingTaskSize() != 0 {
-		t.Fatal("block != 0")
-	}
-	if p.IsClosed() {
-		t.Fatal("p is isClosed")
-	}
-	ch := make(chan struct{})
-	fn := func() {
-		<-ch
-	}
-	err := p.Submit(fn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = p.Submit(fn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	close(ch)
-	p.Submit(func() {
-		panic("nil")
-	})
-	time.Sleep(3 * time.Second)
-	p.Close()
-	if !p.IsClosed() {
-		t.Fatal("p is not isClosed")
-	}
-}
 
-func TestPanic(t *testing.T) {
-	p := pool.New(pool.WithMaxSize(1))
-	err := p.Submit(func() {
-		fmt.Println("run")
-		panic("1")
-	})
-	if err != nil {
-		t.Fatal(err)
+	{
+		size := 5
+		minimumSize := 1
+		p := pool.New(pool.WithInitSize(minimumSize), pool.WithMaxSize(size), pool.WithMaxIdleTimeout(3*time.Second))
+		waitChannel := make(chan struct{})
+		fn := func() {
+			<-waitChannel
+		}
+		for range size {
+			_ = p.Submit(fn)
+		}
+		close(waitChannel)
+		time.Sleep(10 * time.Second)
+		if p.WorkerSize() != minimumSize {
+			t.Fatal("waiting task size is not", minimumSize, p.WorkerSize())
+		}
+		p.Close()
 	}
-	time.Sleep(3 * time.Second)
-	err = p.Submit(func() {
-		fmt.Println("run again")
-		panic("1")
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(3 * time.Second)
-	p.Close()
-}
 
-func BenchmarkPool(b *testing.B) {
-	p := pool.New(pool.WithInitSize(1024), pool.WithMinIdleSize(1024), pool.WithMaxWaitingSize(1024))
-	wg := sync.WaitGroup{}
-	count := uint64(0)
-	b.StartTimer()
-	for i := 0; i < b.N; i++ {
-		wg.Add(1)
-		_ = p.Submit(func() {
-			atomic.AddUint64(&count, 1)
-			wg.Done()
-		})
+	{
+		size := 5
+		minimumSize := 1
+		p := pool.New(pool.WithInitSize(minimumSize), pool.WithMaxSize(size), pool.WithMaxIdleTimeout(time.Minute),
+			pool.WithMinIdleSize(size))
+		waitChannel := make(chan struct{})
+		fn := func() {
+			<-waitChannel
+		}
+		for range size * 2 {
+			_ = p.Submit(fn)
+		}
+		err := p.Submit(fn)
+		if !errors.Is(err, pool.ErrPoolIsOverload) {
+			t.Fatal("waiting task size is not overload")
+		}
+		close(waitChannel)
+		p.Close()
 	}
-	wg.Wait()
-	b.StopTimer()
-	b.Log(count)
+
+	{
+		size := 5
+		minimumSize := 1
+		p := pool.New(pool.WithInitSize(minimumSize), pool.WithMaxSize(size), pool.WithMaxIdleTimeout(time.Minute),
+			pool.WithMinIdleSize(size), pool.WithMaxWaitingSize(size))
+		waitChannel := make(chan struct{})
+		result := int64(0)
+		fn := func() {
+			<-waitChannel
+			atomic.AddInt64(&result, 1)
+		}
+		expectedResult := int64(0)
+		for range size * 3 {
+			err := p.Submit(fn)
+			if err == nil {
+				expectedResult++
+			}
+		}
+		if p.WaitingTaskSize() != size {
+			t.Fatal("waiting task size is not", size, p.WaitingTaskSize())
+		}
+		close(waitChannel)
+		p.Close()
+		time.Sleep(10 * time.Second)
+		if expectedResult-1 != atomic.LoadInt64(&result) {
+			t.Fatal("result is unexpected", result, expectedResult)
+		}
+	}
 }
