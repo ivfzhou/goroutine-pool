@@ -12,8 +12,8 @@ module gitee.com/ivfzhou/goroutine-pool
 
 go 1.26
 
-retract [v1.0.0, v1.0.1]
+retract [v1.0.0, v1.0.3]
 
-require gitee.com/ivfzhou/safe-queue v1.0.5
+require gitee.com/ivfzhou/safe-queue v1.0.7
 
 require golang.org/x/sys v0.41.0 // indirect
