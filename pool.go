@@ -53,6 +53,7 @@ func New(options ...OptionFunc) *Pool {
 	pool.workers = make([]*worker, pool.initializedSize)
 	for i := range pool.workers {
 		pool.workers[i] = newWorker()
+		pool.workers[i].start()
 	}
 
 	// 读取队列，并提交任务。
@@ -94,28 +95,31 @@ func New(options ...OptionFunc) *Pool {
 	// 定时清理多余工作者。
 	go func() {
 		ticker := time.NewTicker(cleanWorkerInterval)
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ticker.C:
-				if len(pool.workers)-pool.minimumIdleSize > 0 {
-					go func() {
-						if !pool.modifyWorkersLock.TryLock() {
-							return
-						}
-						defer pool.modifyWorkersLock.Unlock()
-						newWorkers := make([]*worker, 0, len(pool.workers))
-						for _, w := range pool.workers {
-							if w.isIdle(pool.maximumIdleTimeout) {
-								w.close()
-							} else {
-								newWorkers = append(newWorkers, w)
-							}
-						}
-						pool.workers = newWorkers
-					}()
+				if !pool.modifyWorkersLock.TryLock() {
+					continue
 				}
+				// 计算最多可回收的 worker 数量，保证至少保留 minimumIdleSize 个。
+				removable := len(pool.workers) - pool.minimumIdleSize
+				if removable <= 0 {
+					pool.modifyWorkersLock.Unlock()
+					continue
+				}
+				newWorkers := make([]*worker, 0, len(pool.workers))
+				for _, w := range pool.workers {
+					if removable > 0 && w.isIdle(pool.maximumIdleTimeout) {
+						w.close()
+						removable--
+					} else {
+						newWorkers = append(newWorkers, w)
+					}
+				}
+				pool.workers = newWorkers
+				pool.modifyWorkersLock.Unlock()
 			case <-pool.closedFlag:
-				ticker.Stop()
 				return
 			}
 		}
@@ -134,7 +138,7 @@ func (p *Pool) Submit(fn func()) error {
 	}
 
 	// 将任务提交到队列。
-	if p.maximumWaitingSize > 0 && p.blockedTasks.Cap() > 0 {
+	if p.maximumWaitingSize > 0 && p.blockedTasks.Len() < uint32(p.maximumWaitingSize) {
 		_, err := p.blockedTasks.Put(fn)
 		if err == nil {
 			return nil
@@ -161,9 +165,9 @@ func (p *Pool) Close() {
 		for _, w := range p.workers {
 			w.close()
 		}
+		// 仅回收 worker 切片。option 与 blockedTasks 在 New 中赋值后即不可变，
+		// 保留它们可避免 Close 后 Cap/Submit/WaitingTaskSize 等读取发生空指针解引用。
 		p.workers = nil
-		p.blockedTasks = nil
-		p.option = nil
 	})
 }
 
