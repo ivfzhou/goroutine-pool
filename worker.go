@@ -28,7 +28,7 @@ var channelLength = func() int {
 
 type worker struct {
 	startIdleTime time.Time
-	running       uint32
+	running       atomic.Uint32
 	channel       chan func()
 }
 
@@ -50,16 +50,16 @@ func wrapperPanic(f func()) func() {
 func (w *worker) start() {
 	go func() {
 		for fn := range w.channel {
-			atomic.StoreUint32(&w.running, 1)
+			w.running.Store(1)
 			wrapperPanic(fn)()
 			w.startIdleTime = time.Now()
-			atomic.StoreUint32(&w.running, 0)
+			w.running.Store(0)
 		}
 	}()
 }
 
 func (w *worker) isIdle(idleTimeout time.Duration) bool {
-	if atomic.LoadUint32(&w.running) <= 0 && time.Now().After(w.startIdleTime.Add(idleTimeout)) {
+	if w.running.Load() <= 0 && time.Now().After(w.startIdleTime.Add(idleTimeout)) {
 		return true
 	}
 	return false

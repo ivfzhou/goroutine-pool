@@ -16,13 +16,22 @@
 - **线程安全**：所有操作都是并发安全的
 - **高性能**：基于 Lock-Free 队列实现，减少锁竞争
 
-# 三、安装
+# 三、可应用场景
+
+- **批量任务处理**：需要并发执行大量耗时相近的短任务（如批量导出、批量计算、图片/视频转码、文件处理），通过协程池统一调度，避免为每个任务都创建协程带来的开销。
+- **并发请求聚合**：同时调用多个下游接口、微服务或数据库（如批量 RPC、HTTP 请求、批量 SQL 查询），控制并发度，防止瞬间打爆后端资源。
+- **消息/队列消费**：作为消息队列或任务队列的消费者，持续拉取消息并交给协程池处理，结合 `WithMaxWaitingSize` 配置缓冲队列，实现削峰填谷。
+- **流量控制与限流**：通过 `WithMaxSize` 限制最大并发协程数，为爬虫、外部 API 调用等场景提供天然的并发上限保护。
+- **需要优雅关闭的服务**：在 HTTP 服务、定时任务或常驻进程中，用 `Close()` 等待所有在途任务完成后安全退出，避免任务被中断或丢失。
+- **需要动态扩缩容的负载**：流量波动明显的场景（如秒杀、活动高峰），协程池可根据负载自动增减协程，并在空闲时回收，节省系统资源。
+
+# 四、安装
 
 ```bash
 go get github.com/ivfzhou/goroutine-pool@latest
 ```
 
-# 四、快速开始
+# 五、快速开始
 
 ```go
 package main
@@ -60,144 +69,4 @@ func main() {
     fmt.Printf("Worker size: %d\n", p.WorkerSize())
     fmt.Printf("Waiting tasks: %d\n", p.WaitingTaskSize())
 }
-```
-
-# 五、配置选项
-
-```go
-// 设置协程池最大容量（默认：math.MaxUint32）
-pool.WithMaxSize(1000)
-
-// 设置最小空闲协程数（默认：等于初始协程数）
-pool.WithMinIdleSize(50)
-
-// 设置初始协程数（默认：0）
-pool.WithInitSize(10)
-
-// 设置协程最大空闲时间（默认：5秒）
-pool.WithMaxIdleTimeout(30 * time.Second)
-
-// 设置任务等待队列最大长度（默认：0，不启用队列）
-pool.WithMaxWaitingSize(10000)
-```
-
-# 六、完整示例
-
-## 6.1 示例 1：使用任务队列缓冲
-
-```go
-p := pool.New(
-    pool.WithMaxSize(10),
-    pool.WithMaxWaitingSize(1000), // 启用任务队列，最多缓存1000个任务
-)
-defer p.Close()
-
-// 即使瞬间提交大量任务，也不会丢失
-for i := 0; i < 10000; i++ {
-    err := p.Submit(func() {
-        // 任务逻辑
-    })
-    
-    if err != nil {
-        // 队列满了或池已关闭
-        log.Printf("Submit failed: %v", err)
-    }
-}
-```
-
-## 6.2 示例 2：优雅关闭
-
-```go
-p := pool.New(pool.WithMaxSize(100))
-
-// 提交一些长时间运行的任务
-for i := 0; i < 50; i++ {
-    p.Submit(func() {
-        time.Sleep(5 * time.Second)
-        fmt.Println("Task completed")
-    })
-}
-
-// 等待所有任务完成后关闭
-p.Close()
-fmt.Println("Pool closed gracefully")
-```
-
-## 6.3 示例 3：监控协程池状态
-
-```go
-p := pool.New(
-    pool.WithInitSize(10),
-    pool.WithMaxSize(100),
-    pool.WithMaxIdleTimeout(10 * time.Second),
-)
-
-go func() {
-    ticker := time.NewTicker(1 * time.Second)
-    defer ticker.Stop()
-    
-    for range ticker.C {
-        fmt.Printf("Workers: %d, Waiting tasks: %d\n", 
-            p.WorkerSize(), 
-            p.WaitingTaskSize())
-    }
-}()
-
-// 使用协程池...
-```
-
-# 七、API 文档
-
-## 7.1 创建协程池
-
-```go
-func New(options ...OptionFunc) *Pool
-```
-
-创建一个新的协程池，支持通过选项进行配置。
-
-## 7.2 提交任务
-
-```go
-func (p *Pool) Submit(fn func()) error
-```
-
-提交一个任务到协程池，返回可能的错误：
-- `ErrPoolIsClosed`：协程池已关闭
-- `ErrPoolIsOverload`：协程池过载（无空闲协程且达到最大协程数，且队列已满）
-
-## 7.3 关闭协程池
-
-```go
-func (p *Pool) Close()
-```
-
-优雅地关闭协程池，等待所有任务完成后退出。
-
-## 7.4 查询状态
-
-```go
-// 获取当前运行的协程数量
-func (p *Pool) WorkerSize() int
-
-// 获取等待队列中的任务数量
-func (p *Pool) WaitingTaskSize() int
-
-// 获取协程池最大容量
-func (p *Pool) Cap() int
-
-// 判断协程池是否已关闭
-func (p *Pool) IsClosed() bool
-```
-
-# 八、错误处理
-
-```go
-var (
-    // 协程池已满，无法提交新任务
-    ErrPoolIsOverload = errors.New("pool is overload")
-    
-    // 协程池已关闭
-    ErrPoolIsClosed = errors.New("pool is closed")
-)
 ```

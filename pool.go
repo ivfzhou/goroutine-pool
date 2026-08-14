@@ -35,7 +35,7 @@ var (
 // Pool 协程池结构体。
 type Pool struct {
 	*option
-	submitNumber        int64
+	submitNumber        atomic.Int64
 	closedFlag          chan struct{}
 	exitBlockedTaskFlag chan struct{}
 	closeOnce           sync.Once
@@ -65,7 +65,7 @@ func New(options ...OptionFunc) *Pool {
 				case <-pool.closedFlag:
 					for {
 						fn, _, err := pool.blockedTasks.Get()
-						if errors.Is(err, queue.ErrQueueIsEmpty) && atomic.LoadInt64(&pool.submitNumber) == 0 {
+						if errors.Is(err, queue.ErrQueueIsEmpty) && pool.submitNumber.Load() == 0 {
 							break
 						}
 						if err != nil {
@@ -126,8 +126,8 @@ func New(options ...OptionFunc) *Pool {
 
 // Submit 提交任务。
 func (p *Pool) Submit(fn func()) error {
-	atomic.AddInt64(&p.submitNumber, 1)
-	defer atomic.AddInt64(&p.submitNumber, -1)
+	p.submitNumber.Add(1)
+	defer p.submitNumber.Add(-1)
 
 	if p.IsClosed() {
 		return ErrPoolIsClosed
