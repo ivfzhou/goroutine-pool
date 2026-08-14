@@ -14,6 +14,6 @@ go 1.26
 
 retract [v1.0.0, v1.0.3]
 
-require gitee.com/ivfzhou/safe-queue v1.0.7
+require gitee.com/ivfzhou/safe-queue v1.0.8-0.20260814164538-a6e1559f3b1f
 
-require golang.org/x/sys v0.41.0 // indirect
+require golang.org/x/sys v0.47.0 // indirect
